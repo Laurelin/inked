@@ -1,43 +1,51 @@
 package inked
 
 import (
+	"strings"
 	"testing"
-	"golang.org/x/net/html"
-	"slices"
 )
 
-func TestParseParagraph(t *testing.T) {
-	document, err := parseHTML(`<p>Hello, Inked.</p>`)
-	if err != nil {
-		t.Fatalf("parse HTML: %v", err)
-	}
+func TestResolveParagraph(t *testing.T) {
+	document := mustResolve(t, `<p class="text-lg font-bold">Hello, Inked.</p>`)
+	body := document.Children[0].(resolvedElement)
+	paragraph := body.Children[0].(resolvedElement)
+	text := paragraph.Children[0].(resolvedText)
 
-	if got, want := documentText(document), "Hello, Inked."; got != want {
-		t.Fatalf("document text = %q, want %q", got, want)
+	if text.Text != "Hello, Inked." {
+		t.Fatalf("text = %q", text.Text)
+	}
+	if text.Style.FontSize != 13.5 || text.Style.Weight != weightBold {
+		t.Fatalf("text style = %+v", text.Style)
 	}
 }
 
-func TestWalkSkipsChildren(t *testing.T) {
-	root := &html.Node{Type: html.ElementNode, Data: "div"}
-	skipped := &html.Node{Type: html.ElementNode, Data: "script"}
-	hidden := &html.Node{Type: html.TextNode, Data: "hidden"}
-	paragraph := &html.Node{Type: html.ElementNode, Data: "p"}
-	visible := &html.Node{Type: html.TextNode, Data: "visible"}
-
-	root.AppendChild(skipped)
-	skipped.AppendChild(hidden)
-	root.AppendChild(paragraph)
-	paragraph.AppendChild(visible)
-
-	var visited []string
-
-	walk(root, func(node *html.Node) bool {
-		visited = append(visited, node.Data)
-		return node != skipped
-	})
-
-	want := []string{"div", "script", "p", "visible"}
-	if !slices.Equal(visited, want) {
-		t.Fatalf("visited %q, want %q", visited, want)
+func TestResolveRejectsUnknownClass(t *testing.T) {
+	_, err := resolveSource(`<p class="shadow-xl">Hello</p>`)
+	if err == nil || !strings.Contains(err.Error(), `unsupported utility class "shadow-xl"`) {
+		t.Fatalf("error = %v", err)
 	}
+}
+
+func TestResolveRejectsUnknownElement(t *testing.T) {
+	_, err := resolveSource(`<table></table>`)
+	if err == nil || !strings.Contains(err.Error(), "unsupported HTML element <table>") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func mustResolve(t *testing.T, source string) resolvedDocument {
+	t.Helper()
+	document, err := resolveSource(source)
+	if err != nil {
+		t.Fatalf("resolve source: %v", err)
+	}
+	return document
+}
+
+func resolveSource(source string) (resolvedDocument, error) {
+	document, err := parseHTML(source)
+	if err != nil {
+		return resolvedDocument{}, err
+	}
+	return resolveDocument(document)
 }

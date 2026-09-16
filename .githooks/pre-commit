@@ -1,0 +1,78 @@
+#!/bin/bash
+
+set -u
+
+readonly limit=6
+
+if command -v go-crap >/dev/null 2>&1; then
+  scanner="$(command -v go-crap)"
+else
+  scanner="$(go env GOPATH 2>/dev/null)/bin/go-crap"
+fi
+
+if [[ ! -x "$scanner" ]]; then
+  echo "commit blocked: go-crap is not installed" >&2
+  echo "install it with: go install github.com/padiazg/go-crap@v0.4.1" >&2
+  exit 1
+fi
+
+report="$(mktemp)"
+trap 'rm -f "$report"' EXIT
+
+if ! "$scanner" scan --format json >"$report"; then
+  echo "commit blocked: go-crap scan failed" >&2
+  exit 1
+fi
+
+python3 - "$report" "$limit" <<'PY'
+import json
+import pathlib
+import sys
+
+report_path = pathlib.Path(sys.argv[1])
+limit = float(sys.argv[2])
+
+try:
+    entries = json.loads(report_path.read_text())["entries"]
+except (KeyError, json.JSONDecodeError) as error:
+    print(f"commit blocked: invalid go-crap report: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+complexity_violations = [
+    entry for entry in entries if entry.get("cyclomatic", 0) > limit
+]
+crap_violations = [
+    entry
+    for entry in entries
+    if not entry["file"].endswith("_test.go") and entry.get("crap", 0) > limit
+]
+
+if not complexity_violations and not crap_violations:
+    raise SystemExit
+
+print(f"commit blocked: code quality exceeds the limit of {limit:g}", file=sys.stderr)
+
+for entry in sorted(
+    complexity_violations,
+    key=lambda item: item["cyclomatic"],
+    reverse=True,
+):
+    print(
+        f'  complexity {entry["cyclomatic"]:g}: '
+        f'{entry["file"]}:{entry["line"]} {entry["function"]}',
+        file=sys.stderr,
+    )
+
+for entry in sorted(
+    crap_violations,
+    key=lambda item: item["crap"],
+    reverse=True,
+):
+    print(
+        f'  CRAP {entry["crap"]:.2f}: '
+        f'{entry["file"]}:{entry["line"]} {entry["function"]}',
+        file=sys.stderr,
+    )
+
+raise SystemExit(1)
+PY
