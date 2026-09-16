@@ -1,0 +1,23 @@
+---
+description: Idiomatic Go naming for types, functions, variables, and files
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Idiomatic Go Naming
+
+- Follow Effective Go and Go Code Review Comments. Prefer clear, compact names whose length is proportional to scope.
+- Use package context to avoid stutter: prefer `pdf.Page` over `pdf.PDFPage`.
+- Preserve standard initialisms: `PDF`, `HTML`, `HTTP`, `URL`, and `ID`; use forms such as `pdfWriter` and `htmlNode` when unexported.
+- Name functions for what they do. Use verbs such as `parse`, `resolve`, `layout`, `encode`, `format`, `write`, and `serialize`.
+- Do not give serialized strings constructor-like noun names. Prefer `formatPageDictionary()` over `pageObject()`.
+- Use `New` or `NewType` only when constructing a meaningful Go value. Unexported `newType` functions must follow the same rule.
+- Disambiguate similar domain concepts by role, not subtle plurality. Prefer `formatPageTreeDictionary` and `formatPageDictionary` over `pagesObject` and `pageObject`.
+- Split concepts with different meanings into different types. Prefer `objectNumber` and `objectBody` over interchangeable `int` and `string` parameters.
+- Name parameters by semantic role: `contentObjectNumber`, not `contentNumber`; `destination`, not `w`, outside tiny scopes.
+- Use short, consistent receiver names. Do not use `this`, `self`, or receiver names that differ across a type's methods.
+- Name single-method interfaces by behavior, usually with an `-er` suffix. Do not prefix interfaces with `I`.
+- Avoid `Get` in accessors unless the operation performs retrieval work. Prefer `PageCount()` to `GetPageCount()`.
+- Boolean names should read as predicates (`hasContent`, `isBlock`, `canWrap`). Prefer explicit modes or distinct types when a boolean has multiple meanings.
+- Use lowercase file names, adding underscores only where they improve readability, such as `pdf_writer.go`.
+- Before introducing a name, inspect the package vocabulary and keep terminology consistent. Do not rename exported identifiers without checking compatibility impact.

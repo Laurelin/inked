@@ -7,8 +7,8 @@ import (
 	"golang.org/x/net/html"
 )
 
-func parseHTML(source string) (*html.Node, error) {
-	return html.Parse(strings.NewReader(source))
+func parseHTML(htmlSource string) (*html.Node, error) {
+	return html.Parse(strings.NewReader(htmlSource))
 }
 
 type resolvedDocument struct {
@@ -33,72 +33,63 @@ type resolvedText struct {
 
 func (resolvedText) resolvedNode() {}
 
-type resolvedBreak struct{}
+type resolvedLineBreak struct{}
 
-func (resolvedBreak) resolvedNode() {}
+func (resolvedLineBreak) resolvedNode() {}
 
-func resolveDocument(document *html.Node) (resolvedDocument, error) {
-	children, err := resolveChildren(document, defaultStyle())
+func resolveDocument(root *html.Node) (resolvedDocument, error) {
+	children, err := resolveChildren(root, initialStyle())
 	if err != nil {
 		return resolvedDocument{}, err
 	}
 	return resolvedDocument{Children: children}, nil
 }
 
-func resolveChildren(parent *html.Node, inherited computedStyle) ([]resolvedNode, error) {
-	var result []resolvedNode
+func resolveChildren(parent *html.Node, inheritedStyle computedStyle) ([]resolvedNode, error) {
+	var children []resolvedNode
 	for child := parent.FirstChild; child != nil; child = child.NextSibling {
-		nodes, err := resolveNode(child, inherited)
+		resolvedChildren, err := resolveNode(child, inheritedStyle)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, nodes...)
+		children = append(children, resolvedChildren...)
 	}
-	return result, nil
+	return children, nil
 }
 
-func resolveNode(node *html.Node, inherited computedStyle) ([]resolvedNode, error) {
+func resolveNode(node *html.Node, inheritedStyle computedStyle) ([]resolvedNode, error) {
 	switch node.Type {
 	case html.TextNode:
-		return []resolvedNode{resolvedText{Style: inherited, Text: node.Data}}, nil
+		return []resolvedNode{resolvedText{Style: inheritedStyle, Text: node.Data}}, nil
 	case html.ElementNode:
-		return resolveElement(node, inherited)
+		return resolveElement(node, inheritedStyle)
 	default:
 		return nil, nil
 	}
 }
 
-func resolveElement(node *html.Node, inherited computedStyle) ([]resolvedNode, error) {
-	nodes, handled, err := resolveSpecialElement(node, inherited)
-	if handled {
-		return nodes, err
-	}
-	return resolveStyledElement(node, inherited)
-}
-
-func resolveSpecialElement(
-	node *html.Node,
-	inherited computedStyle,
-) ([]resolvedNode, bool, error) {
-	if ignoredElement(node.Data) {
-		return nil, true, nil
+func resolveElement(node *html.Node, inheritedStyle computedStyle) ([]resolvedNode, error) {
+	if isIgnoredElement(node.Data) {
+		return nil, nil
 	}
 	if node.Data == "html" {
-		children, err := resolveChildren(node, inherited)
-		return children, true, err
+		return resolveChildren(node, inheritedStyle)
 	}
 	if node.Data == "br" {
-		return []resolvedNode{resolvedBreak{}}, true, nil
+		return []resolvedNode{resolvedLineBreak{}}, nil
 	}
-	return nil, false, nil
+	return resolveLayoutElement(node, inheritedStyle)
 }
 
-func resolveStyledElement(node *html.Node, inherited computedStyle) ([]resolvedNode, error) {
-	if !supportedElement(node.Data) {
+func resolveLayoutElement(node *html.Node, inheritedStyle computedStyle) ([]resolvedNode, error) {
+	if !isSupportedElement(node.Data) {
 		return nil, fmt.Errorf("unsupported HTML element <%s>", node.Data)
 	}
 
-	style, err := applyClasses(elementStyle(inherited, node.Data), classAttribute(node))
+	style, err := applyUtilityClasses(
+		computeElementStyle(inheritedStyle, node.Data),
+		elementClasses(node),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("<%s>: %w", node.Data, err)
 	}
@@ -110,15 +101,15 @@ func resolveStyledElement(node *html.Node, inherited computedStyle) ([]resolvedN
 	return []resolvedNode{resolvedElement{Style: style, Children: children}}, nil
 }
 
-func ignoredElement(name string) bool {
+func isIgnoredElement(name string) bool {
 	return name == "head" || name == "script" || name == "style"
 }
 
-func supportedElement(name string) bool {
+func isSupportedElement(name string) bool {
 	return name == "body" || name == "div" || name == "p" || name == "span"
 }
 
-func classAttribute(node *html.Node) string {
+func elementClasses(node *html.Node) string {
 	for _, attribute := range node.Attr {
 		if attribute.Key == "class" {
 			return attribute.Val

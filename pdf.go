@@ -8,143 +8,162 @@ import (
 	"strings"
 )
 
-func writePDF(destination io.Writer, document laidOutDocument) error {
-	data, err := buildPDF(document)
+type objectNumber int
+
+type objectOffset int
+
+type objectBody string
+
+type contentStream string
+
+func writePDF(destination io.Writer, document documentLayout) error {
+	serializedPDF, err := serializePDF(document)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(destination, bytes.NewReader(data)); err != nil {
+	if _, err := io.Copy(destination, bytes.NewReader(serializedPDF)); err != nil {
 		return fmt.Errorf("write PDF: %w", err)
 	}
 	return nil
 }
 
-func buildPDF(document laidOutDocument) ([]byte, error) {
-	objects, err := pdfObjects(document)
+func serializePDF(document documentLayout) ([]byte, error) {
+	objectBodies, err := buildObjectBodies(document)
 	if err != nil {
 		return nil, err
 	}
 
-	var output bytes.Buffer
-	output.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-	offsets := writeObjects(&output, objects)
-	writeXref(&output, offsets)
-	return output.Bytes(), nil
+	var buffer bytes.Buffer
+	buffer.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+	objectOffsets := writeIndirectObjects(&buffer, objectBodies)
+	writeCrossReferenceTable(&buffer, objectOffsets)
+	return buffer.Bytes(), nil
 }
 
-func pdfObjects(document laidOutDocument) ([]string, error) {
+func buildObjectBodies(document documentLayout) ([]objectBody, error) {
 	pageCount := len(document.Pages)
-	fontNormal := 3 + pageCount*2
-	fontBold := fontNormal + 1
+	normalFontObjectNumber := objectNumber(3 + pageCount*2)
+	boldFontObjectNumber := normalFontObjectNumber + 1
 
-	objects := []string{
+	objectBodies := []objectBody{
 		"<< /Type /Catalog /Pages 2 0 R >>",
-		pagesObject(pageCount),
+		formatPageTreeDictionary(pageCount),
 	}
 	for index, page := range document.Pages {
-		content, err := pageContent(page)
+		pageContent, err := encodePageContent(page)
 		if err != nil {
 			return nil, err
 		}
-		pageNumber := 3 + index*2
-		contentNumber := pageNumber + 1
-		objects = append(objects,
-			pageObject(contentNumber, fontNormal, fontBold),
-			streamObject(content),
+		pageObjectNumber := objectNumber(3 + index*2)
+		contentObjectNumber := pageObjectNumber + 1
+		objectBodies = append(objectBodies,
+			formatPageDictionary(
+				contentObjectNumber,
+				normalFontObjectNumber,
+				boldFontObjectNumber,
+			),
+			formatStreamObject(pageContent),
 		)
 	}
-	objects = append(objects,
+	objectBodies = append(objectBodies,
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
 	)
-	return objects, nil
+	return objectBodies, nil
 }
 
-func pagesObject(pageCount int) string {
-	var children strings.Builder
+func formatPageTreeDictionary(pageCount int) objectBody {
+	var pageReferences strings.Builder
 	for index := range pageCount {
-		fmt.Fprintf(&children, "%d 0 R ", 3+index*2)
+		fmt.Fprintf(&pageReferences, "%d 0 R ", 3+index*2)
 	}
-	return fmt.Sprintf(
+	return objectBody(fmt.Sprintf(
 		"<< /Type /Pages /Kids [%s] /Count %d >>",
-		children.String(),
+		pageReferences.String(),
 		pageCount,
-	)
+	))
 }
 
-func pageObject(contentNumber, fontNormal, fontBold int) string {
-	return fmt.Sprintf(
+func formatPageDictionary(
+	contentObjectNumber objectNumber,
+	normalFontObjectNumber objectNumber,
+	boldFontObjectNumber objectNumber,
+) objectBody {
+	return objectBody(fmt.Sprintf(
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "+
 			"/Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> "+
 			"/Contents %d 0 R >>",
-		fontNormal,
-		fontBold,
-		contentNumber,
-	)
+		normalFontObjectNumber,
+		boldFontObjectNumber,
+		contentObjectNumber,
+	))
 }
 
-func pageContent(page laidOutPage) (string, error) {
-	var content strings.Builder
+func encodePageContent(page pageLayout) (contentStream, error) {
+	var stream strings.Builder
 	for _, run := range page.Runs {
-		text, err := escapePDFText(run.Text)
+		encodedText, err := encodePDFLiteralString(run.Text)
 		if err != nil {
 			return "", err
 		}
-		font := "F1"
+		fontResourceName := "F1"
 		if run.Style.Weight == weightBold {
-			font = "F2"
+			fontResourceName = "F2"
 		}
 		fmt.Fprintf(
-			&content,
+			&stream,
 			"BT /%s %s Tf 1 0 0 1 %s %s Tm (%s) Tj ET\n",
-			font,
-			pdfNumber(run.Style.FontSize),
-			pdfNumber(run.X),
-			pdfNumber(letterHeight-run.Y),
-			text,
+			fontResourceName,
+			formatPDFNumber(run.Style.FontSize),
+			formatPDFNumber(run.X),
+			formatPDFNumber(letterPageHeight-run.Y),
+			encodedText,
 		)
 	}
-	return content.String(), nil
+	return contentStream(stream.String()), nil
 }
 
-func streamObject(content string) string {
-	return fmt.Sprintf(
+func formatStreamObject(content contentStream) objectBody {
+	return objectBody(fmt.Sprintf(
 		"<< /Length %d >>\nstream\n%sendstream",
 		len([]byte(content)),
 		content,
-	)
+	))
 }
 
-func writeObjects(output *bytes.Buffer, objects []string) []int {
-	offsets := make([]int, len(objects))
-	for index, object := range objects {
-		offsets[index] = output.Len()
-		fmt.Fprintf(output, "%d 0 obj\n%s\nendobj\n", index+1, object)
+func writeIndirectObjects(
+	buffer *bytes.Buffer,
+	objectBodies []objectBody,
+) []objectOffset {
+	objectOffsets := make([]objectOffset, len(objectBodies))
+	for index, body := range objectBodies {
+		objectOffsets[index] = objectOffset(buffer.Len())
+		fmt.Fprintf(buffer, "%d 0 obj\n%s\nendobj\n", index+1, body)
 	}
-	return offsets
+	return objectOffsets
 }
 
-func writeXref(output *bytes.Buffer, offsets []int) {
-	xrefOffset := output.Len()
-	fmt.Fprintf(output, "xref\n0 %d\n", len(offsets)+1)
-	output.WriteString("0000000000 65535 f \n")
-	for _, offset := range offsets {
-		fmt.Fprintf(output, "%010d 00000 n \n", offset)
+func writeCrossReferenceTable(buffer *bytes.Buffer, objectOffsets []objectOffset) {
+	crossReferenceOffset := buffer.Len()
+	fmt.Fprintf(buffer, "xref\n0 %d\n", len(objectOffsets)+1)
+	buffer.WriteString("0000000000 65535 f \n")
+	for _, offset := range objectOffsets {
+		fmt.Fprintf(buffer, "%010d 00000 n \n", offset)
 	}
 	fmt.Fprintf(
-		output,
+		buffer,
 		"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n",
-		len(offsets)+1,
-		xrefOffset,
+		len(objectOffsets)+1,
+		crossReferenceOffset,
 	)
 }
 
-func pdfNumber(value float64) string {
-	result := strconv.FormatFloat(value, 'f', 2, 64)
-	result = strings.TrimRight(result, "0")
-	result = strings.TrimRight(result, ".")
-	if result == "-0" || result == "" {
+func formatPDFNumber(value float64) string {
+	formattedNumber := strconv.FormatFloat(value, 'f', 2, 64)
+	formattedNumber = strings.TrimRight(formattedNumber, "0")
+	formattedNumber = strings.TrimRight(formattedNumber, ".")
+	if formattedNumber == "-0" || formattedNumber == "" {
 		return "0"
 	}
-	return result
+	return formattedNumber
 }

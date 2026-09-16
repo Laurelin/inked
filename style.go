@@ -28,7 +28,7 @@ const (
 	weightBold
 )
 
-type edges struct {
+type boxEdges struct {
 	Top    float64
 	Right  float64
 	Bottom float64
@@ -41,42 +41,44 @@ type computedStyle struct {
 	Weight           fontWeight
 	FontSize         float64
 	LineHeightFactor float64
-	Margin           edges
-	Padding          edges
+	Margin           boxEdges
+	Padding          boxEdges
 }
 
-var fontSizeUtilities = map[string]float64{
+var fontSizePointsByUtility = map[string]float64{
 	"text-xs": 9, "text-sm": 10.5, "text-base": 12, "text-lg": 13.5, "text-xl": 15,
 }
 
-var fontWeightUtilities = map[string]fontWeight{
+var fontWeightByUtility = map[string]fontWeight{
 	"font-normal": weightNormal, "font-bold": weightBold,
 }
 
-var lineHeightUtilities = map[string]float64{
+var lineHeightFactorByUtility = map[string]float64{
 	"leading-none": 1, "leading-tight": 1.25,
 	"leading-normal": 1.5, "leading-relaxed": 1.625,
 }
 
-var alignmentUtilities = map[string]textAlignment{
+var textAlignmentByUtility = map[string]textAlignment{
 	"text-left": alignLeft, "text-center": alignCenter, "text-right": alignRight,
 }
 
-var validSpacingAxes = map[string]bool{
-	"": true, "x": true, "y": true, "t": true, "r": true, "b": true, "l": true,
+var supportedSpacingAxes = map[string]struct{}{
+	"": {}, "x": {}, "y": {}, "t": {}, "r": {}, "b": {}, "l": {},
 }
 
-var spacingSetters = map[string]func(*edges, float64){
-	"":  func(target *edges, value float64) { *target = edges{value, value, value, value} },
-	"x": func(target *edges, value float64) { target.Left, target.Right = value, value },
-	"y": func(target *edges, value float64) { target.Top, target.Bottom = value, value },
-	"t": func(target *edges, value float64) { target.Top = value },
-	"r": func(target *edges, value float64) { target.Right = value },
-	"b": func(target *edges, value float64) { target.Bottom = value },
-	"l": func(target *edges, value float64) { target.Left = value },
+var spacingAxisSetters = map[string]func(*boxEdges, float64){
+	"": func(target *boxEdges, points float64) {
+		*target = boxEdges{points, points, points, points}
+	},
+	"x": func(target *boxEdges, points float64) { target.Left, target.Right = points, points },
+	"y": func(target *boxEdges, points float64) { target.Top, target.Bottom = points, points },
+	"t": func(target *boxEdges, points float64) { target.Top = points },
+	"r": func(target *boxEdges, points float64) { target.Right = points },
+	"b": func(target *boxEdges, points float64) { target.Bottom = points },
+	"l": func(target *boxEdges, points float64) { target.Left = points },
 }
 
-func defaultStyle() computedStyle {
+func initialStyle() computedStyle {
 	return computedStyle{
 		Display:          displayInline,
 		FontSize:         12,
@@ -84,42 +86,42 @@ func defaultStyle() computedStyle {
 	}
 }
 
-func elementStyle(parent computedStyle, element string) computedStyle {
-	style := defaultStyle()
+func computeElementStyle(parent computedStyle, elementName string) computedStyle {
+	style := initialStyle()
 	style.Alignment = parent.Alignment
 	style.Weight = parent.Weight
 	style.FontSize = parent.FontSize
 	style.LineHeightFactor = parent.LineHeightFactor
 
-	if element == "body" || element == "div" || element == "p" {
+	if elementName == "body" || elementName == "div" || elementName == "p" {
 		style.Display = displayBlock
 	}
-	if element == "p" {
+	if elementName == "p" {
 		style.Margin.Bottom = 12
 	}
 
 	return style
 }
 
-func applyClasses(style computedStyle, classes string) (computedStyle, error) {
+func applyUtilityClasses(style computedStyle, classes string) (computedStyle, error) {
 	for _, class := range strings.Fields(classes) {
-		if err := applyClass(&style, class); err != nil {
+		if err := applyUtilityClass(&style, class); err != nil {
 			return computedStyle{}, err
 		}
 	}
 	return style, nil
 }
 
-func applyClass(style *computedStyle, class string) error {
-	if applyDisplay(style, class) ||
-		applyTypography(style, class) ||
-		applySpacing(style, class) {
+func applyUtilityClass(style *computedStyle, class string) error {
+	if applyDisplayUtility(style, class) ||
+		applyTypographyUtility(style, class) ||
+		applySpacingUtility(style, class) {
 		return nil
 	}
 	return fmt.Errorf("unsupported utility class %q", class)
 }
 
-func applyDisplay(style *computedStyle, class string) bool {
+func applyDisplayUtility(style *computedStyle, class string) bool {
 	switch class {
 	case "block":
 		style.Display = displayBlock
@@ -131,67 +133,68 @@ func applyDisplay(style *computedStyle, class string) bool {
 	return true
 }
 
-func applyTypography(style *computedStyle, class string) bool {
-	if value, ok := fontSizeUtilities[class]; ok {
-		style.FontSize = value
+func applyTypographyUtility(style *computedStyle, class string) bool {
+	if fontSizePoints, ok := fontSizePointsByUtility[class]; ok {
+		style.FontSize = fontSizePoints
 		return true
 	}
-	if value, ok := fontWeightUtilities[class]; ok {
-		style.Weight = value
+	if weight, ok := fontWeightByUtility[class]; ok {
+		style.Weight = weight
 		return true
 	}
-	if value, ok := lineHeightUtilities[class]; ok {
-		style.LineHeightFactor = value
+	if lineHeightFactor, ok := lineHeightFactorByUtility[class]; ok {
+		style.LineHeightFactor = lineHeightFactor
 		return true
 	}
-	if value, ok := alignmentUtilities[class]; ok {
-		style.Alignment = value
+	if alignment, ok := textAlignmentByUtility[class]; ok {
+		style.Alignment = alignment
 		return true
 	}
 	return false
 }
 
-func applySpacing(style *computedStyle, class string) bool {
+func applySpacingUtility(style *computedStyle, class string) bool {
 	parts := strings.Split(class, "-")
 	if len(parts) != 2 {
 		return false
 	}
 
-	value, ok := spacingValue(parts[1])
+	spacingPoints, ok := parseSpacingPoints(parts[1])
 	if !ok {
 		return false
 	}
 
-	return setSpacing(style, parts[0], value)
+	return applySpacingPoints(style, parts[0], spacingPoints)
 }
 
-func spacingValue(raw string) (float64, bool) {
-	value, err := strconv.Atoi(raw)
+func parseSpacingPoints(rawScale string) (float64, bool) {
+	scale, err := strconv.Atoi(rawScale)
 	if err != nil {
 		return 0, false
 	}
-	switch value {
+	switch scale {
 	case 0, 1, 2, 4, 6, 8:
-		return float64(value) * 3, true
+		return float64(scale) * 3, true
 	default:
 		return 0, false
 	}
 }
 
-func setSpacing(style *computedStyle, prefix string, value float64) bool {
-	target, axis := spacingTarget(style, prefix)
-	if target == nil || !validSpacingAxis(axis) {
+func applySpacingPoints(style *computedStyle, prefix string, points float64) bool {
+	target, axis := selectSpacingEdges(style, prefix)
+	if target == nil || !isSupportedSpacingAxis(axis) {
 		return false
 	}
-	applyEdges(target, axis, value)
+	setSpacingEdges(target, axis, points)
 	return true
 }
 
-func validSpacingAxis(axis string) bool {
-	return validSpacingAxes[axis]
+func isSupportedSpacingAxis(axis string) bool {
+	_, supported := supportedSpacingAxes[axis]
+	return supported
 }
 
-func spacingTarget(style *computedStyle, prefix string) (*edges, string) {
+func selectSpacingEdges(style *computedStyle, prefix string) (*boxEdges, string) {
 	if strings.HasPrefix(prefix, "m") {
 		return &style.Margin, strings.TrimPrefix(prefix, "m")
 	}
@@ -201,6 +204,6 @@ func spacingTarget(style *computedStyle, prefix string) (*edges, string) {
 	return nil, ""
 }
 
-func applyEdges(target *edges, axis string, value float64) {
-	spacingSetters[axis](target, value)
+func setSpacingEdges(target *boxEdges, axis string, points float64) {
+	spacingAxisSetters[axis](target, points)
 }

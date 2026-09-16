@@ -5,57 +5,57 @@ import (
 	"testing"
 )
 
-func TestRenderBlankPDF(t *testing.T) {
+func TestRendererRenderProducesBlankPDF(t *testing.T) {
 	renderer, err := New()
 	if err != nil {
 		t.Fatalf("create renderer: %v", err)
 	}
 
-	var output bytes.Buffer
+	var pdfOutput bytes.Buffer
 
-	if err := renderer.Render(&output, ""); err != nil {
+	if err := renderer.Render(&pdfOutput, ""); err != nil {
 		t.Fatalf("render blank PDF: %v", err)
 	}
 
-	if !bytes.HasPrefix(output.Bytes(), []byte("%PDF-")) {
+	if !bytes.HasPrefix(pdfOutput.Bytes(), []byte("%PDF-")) {
 		t.Fatal("output is not a PDF")
 	}
 
-	if !bytes.Contains(output.Bytes(), []byte("%%EOF")) {
+	if !bytes.Contains(pdfOutput.Bytes(), []byte("%%EOF")) {
 		t.Fatal("PDF has no end marker")
 	}
 
-	if !bytes.Contains(output.Bytes(), []byte("/Count 1")) {
+	if !bytes.Contains(pdfOutput.Bytes(), []byte("/Count 1")) {
 		t.Fatal("PDF does not contain one page")
 	}
 }
 
-func TestRenderTextPDF(t *testing.T) {
+func TestRendererRenderProducesTextPDF(t *testing.T) {
 	renderer, err := New()
 	if err != nil {
 		t.Fatalf("create renderer: %v", err)
 	}
 
-	var output bytes.Buffer
+	var pdfOutput bytes.Buffer
 
-	if err := renderer.Render(&output, "<p>Hello, world!</p>"); err != nil {
+	if err := renderer.Render(&pdfOutput, "<p>Hello, world!</p>"); err != nil {
 		t.Fatalf("render text PDF: %v", err)
 	}
 
-	if !bytes.HasPrefix(output.Bytes(), []byte("%PDF-")) {
+	if !bytes.HasPrefix(pdfOutput.Bytes(), []byte("%PDF-")) {
 		t.Fatal("output is not a PDF")
 	}
 
-	if !bytes.Contains(output.Bytes(), []byte("%%EOF")) {
+	if !bytes.Contains(pdfOutput.Bytes(), []byte("%%EOF")) {
 		t.Fatal("PDF has no end marker")
 	}
 
-	if !bytes.Contains(output.Bytes(), []byte("(Hello,) Tj")) {
+	if !bytes.Contains(pdfOutput.Bytes(), []byte("(Hello,) Tj")) {
 		t.Fatal("PDF does not contain rendered text")
 	}
 }
 
-func TestRenderRejectsUnknownUtility(t *testing.T) {
+func TestRendererRenderRejectsUnknownUtility(t *testing.T) {
 	renderer, err := New()
 	if err != nil {
 		t.Fatalf("create renderer: %v", err)
@@ -67,7 +67,7 @@ func TestRenderRejectsUnknownUtility(t *testing.T) {
 	}
 }
 
-func TestRenderPropagatesWriterFailure(t *testing.T) {
+func TestRendererRenderPropagatesWriterFailure(t *testing.T) {
 	renderer, err := New()
 	if err != nil {
 		t.Fatalf("create renderer: %v", err)

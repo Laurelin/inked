@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestApplyClassesResolvesUtilities(t *testing.T) {
-	style, err := applyClasses(
-		defaultStyle(),
+func TestApplyUtilityClassesResolvesUtilities(t *testing.T) {
+	style, err := applyUtilityClasses(
+		initialStyle(),
 		"block text-xl font-bold leading-tight text-right mx-4 pt-2",
 	)
 	if err != nil {
@@ -17,16 +17,16 @@ func TestApplyClassesResolvesUtilities(t *testing.T) {
 	want := computedStyle{
 		Display: displayBlock, Alignment: alignRight, Weight: weightBold,
 		FontSize: 15, LineHeightFactor: 1.25,
-		Margin:  edges{Left: 12, Right: 12},
-		Padding: edges{Top: 6},
+		Margin:  boxEdges{Left: 12, Right: 12},
+		Padding: boxEdges{Top: 6},
 	}
 	if !reflect.DeepEqual(style, want) {
 		t.Fatalf("style = %+v, want %+v", style, want)
 	}
 }
 
-func TestApplyClassesRejectsInvalidSpacing(t *testing.T) {
-	if _, err := applyClasses(defaultStyle(), "mz-2"); err == nil {
+func TestApplyUtilityClassesRejectsInvalidSpacing(t *testing.T) {
+	if _, err := applyUtilityClasses(initialStyle(), "mz-2"); err == nil {
 		t.Fatal("accepted invalid spacing axis")
 	}
 }
@@ -43,18 +43,18 @@ func TestDocumentedUtilitiesAreSupported(t *testing.T) {
 	}
 
 	for _, class := range classes {
-		if _, err := applyClasses(defaultStyle(), class); err != nil {
+		if _, err := applyUtilityClasses(initialStyle(), class); err != nil {
 			t.Errorf("%s: %v", class, err)
 		}
 	}
 }
 
-func TestElementStyleInheritsTypographyOnly(t *testing.T) {
-	parent := defaultStyle()
+func TestComputeElementStyleInheritsTypographyOnly(t *testing.T) {
+	parent := initialStyle()
 	parent.Weight = weightBold
 	parent.Margin.Left = 24
 
-	child := elementStyle(parent, "span")
+	child := computeElementStyle(parent, "span")
 
 	if child.Weight != weightBold {
 		t.Fatal("font weight was not inherited")

@@ -9,40 +9,40 @@ import (
 )
 
 func run(args []string, outputPath string) error {
-	source, err := readSource(args)
+	htmlSource, err := readHTMLSource(args)
 	if err != nil {
 		return err
 	}
 
-	return renderPreview(outputPath, string(source))
+	return renderPreview(outputPath, string(htmlSource))
 }
 
-func readSource(args []string) ([]byte, error) {
+func readHTMLSource(args []string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, errors.New("usage: preview <html-file>")
 	}
 
-	source, err := os.ReadFile(args[0])
+	htmlSource, err := os.ReadFile(args[0])
 	if err != nil {
 		return nil, fmt.Errorf("read HTML: %w", err)
 	}
 
-	return source, nil
+	return htmlSource, nil
 }
 
-func renderPreview(outputPath, source string) error {
+func renderPreview(outputPath, htmlSource string) error {
 	renderer, err := inked.New()
 	if err != nil {
 		return fmt.Errorf("create renderer: %w", err)
 	}
 
-	output, err := os.Create(outputPath)
+	outputFile, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("create preview: %w", err)
 	}
-	defer output.Close()
+	defer outputFile.Close()
 
-	if err := renderer.Render(output, source); err != nil {
+	if err := renderer.Render(outputFile, htmlSource); err != nil {
 		return fmt.Errorf("render preview: %w", err)
 	}
 

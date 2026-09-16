@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestResolveParagraph(t *testing.T) {
-	document := mustResolve(t, `<p class="text-lg font-bold">Hello, Inked.</p>`)
+func TestResolveDocumentAppliesParagraphStyle(t *testing.T) {
+	document := mustResolveDocument(t, `<p class="text-lg font-bold">Hello, Inked.</p>`)
 	body := document.Children[0].(resolvedElement)
 	paragraph := body.Children[0].(resolvedElement)
 	text := paragraph.Children[0].(resolvedText)
@@ -19,33 +19,33 @@ func TestResolveParagraph(t *testing.T) {
 	}
 }
 
-func TestResolveRejectsUnknownClass(t *testing.T) {
-	_, err := resolveSource(`<p class="shadow-xl">Hello</p>`)
+func TestResolveHTMLSourceRejectsUnknownClass(t *testing.T) {
+	_, err := resolveHTMLSource(`<p class="shadow-xl">Hello</p>`)
 	if err == nil || !strings.Contains(err.Error(), `unsupported utility class "shadow-xl"`) {
 		t.Fatalf("error = %v", err)
 	}
 }
 
-func TestResolveRejectsUnknownElement(t *testing.T) {
-	_, err := resolveSource(`<table></table>`)
+func TestResolveHTMLSourceRejectsUnknownElement(t *testing.T) {
+	_, err := resolveHTMLSource(`<table></table>`)
 	if err == nil || !strings.Contains(err.Error(), "unsupported HTML element <table>") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
-func mustResolve(t *testing.T, source string) resolvedDocument {
+func mustResolveDocument(t *testing.T, htmlSource string) resolvedDocument {
 	t.Helper()
-	document, err := resolveSource(source)
+	document, err := resolveHTMLSource(htmlSource)
 	if err != nil {
-		t.Fatalf("resolve source: %v", err)
+		t.Fatalf("resolve HTML source: %v", err)
 	}
 	return document
 }
 
-func resolveSource(source string) (resolvedDocument, error) {
-	document, err := parseHTML(source)
+func resolveHTMLSource(htmlSource string) (resolvedDocument, error) {
+	htmlDocument, err := parseHTML(htmlSource)
 	if err != nil {
 		return resolvedDocument{}, err
 	}
-	return resolveDocument(document)
+	return resolveDocument(htmlDocument)
 }

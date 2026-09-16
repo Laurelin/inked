@@ -7,26 +7,29 @@ import (
 	"testing"
 )
 
-func TestBuildPDFWritesValidOffsets(t *testing.T) {
-	data, err := buildPDF(laidOutDocument{Pages: []laidOutPage{{}}})
+func TestSerializePDFProducesValidOffsets(t *testing.T) {
+	serializedPDF, err := serializePDF(documentLayout{Pages: []pageLayout{{}}})
 	if err != nil {
-		t.Fatalf("build PDF: %v", err)
+		t.Fatalf("serialize PDF: %v", err)
 	}
-	pdf := string(data)
+	pdf := string(serializedPDF)
 
 	start := strings.LastIndex(pdf, "startxref\n")
 	valueStart := start + len("startxref\n")
 	valueEnd := strings.IndexByte(pdf[valueStart:], '\n') + valueStart
-	xrefOffset, err := strconv.Atoi(pdf[valueStart:valueEnd])
+	crossReferenceOffset, err := strconv.Atoi(pdf[valueStart:valueEnd])
 	if err != nil {
 		t.Fatalf("parse startxref: %v", err)
 	}
-	if pdf[xrefOffset:xrefOffset+4] != "xref" {
-		t.Fatalf("startxref points to %q", pdf[xrefOffset:xrefOffset+4])
+	if pdf[crossReferenceOffset:crossReferenceOffset+4] != "xref" {
+		t.Fatalf(
+			"startxref points to %q",
+			pdf[crossReferenceOffset:crossReferenceOffset+4],
+		)
 	}
 
-	xrefLines := strings.Split(pdf[xrefOffset:], "\n")
-	objectOffset, err := strconv.Atoi(xrefLines[3][:10])
+	crossReferenceLines := strings.Split(pdf[crossReferenceOffset:], "\n")
+	objectOffset, err := strconv.Atoi(crossReferenceLines[3][:10])
 	if err != nil {
 		t.Fatalf("parse object offset: %v", err)
 	}
@@ -35,25 +38,25 @@ func TestBuildPDFWritesValidOffsets(t *testing.T) {
 	}
 }
 
-func TestBuildPDFIsDeterministic(t *testing.T) {
-	document := laidOutDocument{Pages: []laidOutPage{{Runs: []textRun{{
-		X: 72, Y: 84, Text: "Hello", Style: defaultStyle(),
+func TestSerializePDFIsDeterministic(t *testing.T) {
+	document := documentLayout{Pages: []pageLayout{{Runs: []textRun{{
+		X: 72, Y: 84, Text: "Hello", Style: initialStyle(),
 	}}}}}
-	first, err := buildPDF(document)
+	firstPDF, err := serializePDF(document)
 	if err != nil {
-		t.Fatalf("build first PDF: %v", err)
+		t.Fatalf("serialize first PDF: %v", err)
 	}
-	second, err := buildPDF(document)
+	secondPDF, err := serializePDF(document)
 	if err != nil {
-		t.Fatalf("build second PDF: %v", err)
+		t.Fatalf("serialize second PDF: %v", err)
 	}
-	if string(first) != string(second) {
+	if string(firstPDF) != string(secondPDF) {
 		t.Fatal("PDF output is not deterministic")
 	}
 }
 
 func TestWritePDFPropagatesWriterFailure(t *testing.T) {
-	document := laidOutDocument{Pages: []laidOutPage{{}}}
+	document := documentLayout{Pages: []pageLayout{{}}}
 	if err := writePDF(failingWriter{}, document); err == nil {
 		t.Fatal("writePDF accepted writer failure")
 	}

@@ -11,21 +11,21 @@ func New() (*Renderer, error) {
 	return &Renderer{}, nil
 }
 
-func (r *Renderer) Render(dst io.Writer, source string) error {
-	document, err := parseHTML(source)
+func (r *Renderer) Render(destination io.Writer, htmlSource string) error {
+	htmlDocument, err := parseHTML(htmlSource)
 	if err != nil {
 		return fmt.Errorf("parse HTML: %w", err)
 	}
 
-	resolved, err := resolveDocument(document)
+	resolvedTree, err := resolveDocument(htmlDocument)
 	if err != nil {
 		return fmt.Errorf("resolve document: %w", err)
 	}
 
-	laidOut, err := layoutDocument(resolved)
+	layout, err := layoutDocument(resolvedTree)
 	if err != nil {
 		return fmt.Errorf("layout document: %w", err)
 	}
 
-	return writePDF(dst, laidOut)
+	return writePDF(destination, layout)
 }

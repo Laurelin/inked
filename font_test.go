@@ -12,8 +12,8 @@ func TestEncodeWinANSISupportsWesternText(t *testing.T) {
 	}
 }
 
-func TestEscapePDFText(t *testing.T) {
-	escaped, err := escapePDFText(`a(b)\c`)
+func TestEncodePDFLiteralString(t *testing.T) {
+	escaped, err := encodePDFLiteralString(`a(b)\c`)
 	if err != nil {
 		t.Fatalf("escape text: %v", err)
 	}
@@ -22,16 +22,16 @@ func TestEscapePDFText(t *testing.T) {
 	}
 }
 
-func TestMeasureTextUsesBoldMetrics(t *testing.T) {
-	normal := defaultStyle()
+func TestMeasureTextWidthUsesBoldMetrics(t *testing.T) {
+	normal := initialStyle()
 	bold := normal
 	bold.Weight = weightBold
 
-	normalWidth, err := measureText("Hello", normal)
+	normalWidth, err := measureTextWidth("Hello", normal)
 	if err != nil {
 		t.Fatalf("measure normal: %v", err)
 	}
-	boldWidth, err := measureText("Hello", bold)
+	boldWidth, err := measureTextWidth("Hello", bold)
 	if err != nil {
 		t.Fatalf("measure bold: %v", err)
 	}

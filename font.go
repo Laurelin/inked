@@ -11,7 +11,7 @@ var pdfTextEscaper = strings.NewReplacer(
 	`)`, `\)`,
 )
 
-var helveticaWidths = map[byte]float64{
+var helveticaGlyphWidths = map[byte]float64{
 	' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, '\'': 191,
 	'(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
 	'0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556,
@@ -26,7 +26,7 @@ var helveticaWidths = map[byte]float64{
 	'x': 500, 'y': 500, 'z': 500, '{': 334, '|': 260, '}': 334, '~': 584,
 }
 
-var helveticaBoldWidths = map[byte]float64{
+var helveticaBoldGlyphWidths = map[byte]float64{
 	' ': 278, '!': 333, '"': 474, '#': 556, '$': 556, '%': 889, '&': 722, '\'': 238,
 	'(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
 	'0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556,
@@ -41,7 +41,7 @@ var helveticaBoldWidths = map[byte]float64{
 	'x': 556, 'y': 556, 'z': 500, '{': 389, '|': 280, '}': 389, '~': 584,
 }
 
-var winANSISpecial = map[rune]byte{
+var winANSIExtensionBytes = map[rune]byte{
 	'€': 128, '‚': 130, 'ƒ': 131, '„': 132, '…': 133, '†': 134, '‡': 135,
 	'ˆ': 136, '‰': 137, 'Š': 138, '‹': 139, 'Œ': 140, 'Ž': 142, '‘': 145,
 	'’': 146, '“': 147, '”': 148, '•': 149, '–': 150, '—': 151, '˜': 152,
@@ -51,48 +51,49 @@ var winANSISpecial = map[rune]byte{
 func encodeWinANSI(text string) ([]byte, error) {
 	var encoded []byte
 	for _, character := range text {
-		value, ok := winANSIByte(character)
-		if !ok {
+		encodedByte, supported := encodeWinANSICharacter(character)
+		if !supported {
 			return nil, fmt.Errorf("character %q is not supported by WinAnsi", character)
 		}
-		encoded = append(encoded, value)
+		encoded = append(encoded, encodedByte)
 	}
 	return encoded, nil
 }
 
-func winANSIByte(character rune) (byte, bool) {
+func encodeWinANSICharacter(character rune) (byte, bool) {
 	if character >= 32 && character <= 126 {
 		return byte(character), true
 	}
 	if character >= 160 && character <= 255 {
 		return byte(character), true
 	}
-	value, ok := winANSISpecial[character]
-	return value, ok
+	encodedByte, supported := winANSIExtensionBytes[character]
+	return encodedByte, supported
 }
 
-func measureText(text string, style computedStyle) (float64, error) {
+func measureTextWidth(text string, style computedStyle) (float64, error) {
 	encoded, err := encodeWinANSI(text)
 	if err != nil {
 		return 0, err
 	}
 
-	widths := helveticaWidths
+	glyphWidths := helveticaGlyphWidths
 	if style.Weight == weightBold {
-		widths = helveticaBoldWidths
+		glyphWidths = helveticaBoldGlyphWidths
 	}
 
-	var units float64
+	var glyphUnits float64
 	for _, character := range encoded {
-		units += widths[character]
-		if _, ok := widths[character]; !ok {
-			units += 600
+		glyphWidth, known := glyphWidths[character]
+		if !known {
+			glyphWidth = 600
 		}
+		glyphUnits += glyphWidth
 	}
-	return units * style.FontSize / 1000, nil
+	return glyphUnits * style.FontSize / 1000, nil
 }
 
-func escapePDFText(text string) (string, error) {
+func encodePDFLiteralString(text string) (string, error) {
 	encoded, err := encodeWinANSI(text)
 	if err != nil {
 		return "", err
